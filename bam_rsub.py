@@ -73,7 +73,7 @@ class parseString(object):
             else:
                 # unrecognized character
                 # or a read that reports a substitition followed by an insertion/deletion
-                print self.string
+                # print self.string
                 self.types['un'] += 1
                 self.string = self.string[1:]
         return
@@ -84,34 +84,23 @@ def main():
 
     args = parse_command_line_arguments()
 
-    # length filter
-    samfile = pysam.AlignmentFile(args.bam_file, "rb")
-    if args.max_length:
+    # filtering 
+    if not args.max_length:
+        args.max_length = float('inf')
+    if not args.max_edit_dist:
+        args.max_edit_dist = float('inf')
+    with pysam.AlignmentFile(args.bam_file, "rb") as samfile:
+        print '%d reads before filtering' % samfile.count()
+        i = 0
         with  pysam.AlignmentFile('tmp.bam', "wb", template=samfile) as tmpfile:
-            for read in samfile.fetch(until_eof=True):
-                if read.query_length <= args.max_length:
-                    tmpfile.write(read)
-        samfile.close()
-        samfile = pysam.AlignmentFile('tmp.bam', "rb")
-        os.remove('tmp.bam')
-
-    # edit distance filter
-    if args.max_edit_dist:
-        with  pysam.AlignmentFile('tmp.bam', "wb", template=samfile) as tmpfile:
-            for read in samfile.fetch(until_eof=True):
+            for read in samfile.fetch():
                 edit_dist = read.get_tag('NM')
-                if edit_dist <= args.max_edit_dist:
-                    tmpfile.write(read)
-        samfile.close()
-        samfile = pysam.AlignmentFile('tmp.bam', "rb")
-        os.remove('tmp.bam')
+                if read.query_length <= args.max_length and edit_dist <= args.max_edit_dist:
+                        tmpfile.write(read)
+                        i += 1
+        print '%d reads after filtering' % i
 
     # pileup generation
-    with pysam.AlignmentFile('tmp.bam', "wb", template=samfile) as tmpfile:
-        for read in samfile.fetch(until_eof=True):
-            tmpfile.write(read)
-        samfile.close()
-
     pileup = pysam.mpileup('-f',args.fasta_file,'tmp.bam')
     os.remove('tmp.bam')
 
