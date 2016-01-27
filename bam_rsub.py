@@ -56,6 +56,7 @@ class parseString(object):
                 # unknown?
                 self.types['un'] += 1
                 # skip to next character
+                #sys.stdout.write(self.string[0])
                 self.string = self.string[1:]
             
             elif self.string[0] in list('.,'):
@@ -81,8 +82,8 @@ class parseString(object):
             else:
                 # unrecognized character
                 # or a read that reports a substitition followed by an insertion/deletion
-                # print self.string
                 self.types['un'] += 1
+                #sys.stdout.write(self.string[0])
                 self.string = self.string[1:]
         return
     def __repr__(self):
@@ -131,7 +132,7 @@ def main():
                  'CA':0,'CT':0,'CG':0,
                  'TA':0,'TC':0,'TG':0,
                  'GA':0,'GC':0,'GT':0,
-                 'ins':0,'del':0,'un':0}
+                 'ins':0,'del':0,'un':0,'un_ref':0}
         for line in pileup:
             toks = line.strip('\n').split('\t')
             ref = toks[2].upper()
@@ -144,10 +145,10 @@ def main():
                         print alt, toks[1]
                         sys.exit()
                 else:
-                    subst['un'] += count
+                    subst['un_ref'] += count
 
         # output
-        keyorder = "AA\tTT\tCC\tGG\tAC\tAT\tAG\tCA\tCT\tCG\tTA\tTC\tTG\tGA\tGC\tGT\tins\tdel\tun"
+        keyorder = "AA\tTT\tCC\tGG\tAC\tAT\tAG\tCA\tCT\tCG\tTA\tTC\tTG\tGA\tGC\tGT\tins\tdel\tun\tno_ref"
         print  keyorder
         subst = OrderedDict(sorted(subst.items(), key=lambda i: keyorder.index(i[0])))
         print  '\t'.join([str(x) for x in subst.values()])
