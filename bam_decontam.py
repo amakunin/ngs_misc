@@ -79,7 +79,7 @@ def index(fasta, algorithm):
 def align(fastq, ref, algorithm, aln):
     """Align fastq to reference using specified algorithm"""
     if algorithm == 'bwa':
-        command = 'bwa mem %s %s' % (ref, fastq)
+        command = 'bwa mem -M %s %s' % (ref, fastq)
         exec_command(command, out_file=aln)
     else:
         profile = '--very-sensitive-local' if algorithm == 'bt2l' else \
@@ -130,20 +130,23 @@ with pysam.AlignmentFile(fnames['target']) as tfile, \
     filter_file = pysam.AlignmentFile(fnames['filter'], 'wb', template=tfile)
     (i, j, k) = (0, 0, 0)
     for tread in tfile:
-        cread = cfile.next()
-        assert tread.query_name == cread.query_name
-        # low-quality
-        if not tread.has_tag('NM'):
-            i += 1
-        elif tread.mapping_quality < args.min_quality:
-            j += 1
-        elif tread.opt('NM') > args.max_edit_distance:
-            j += 1
-        # higher similarity to contamination
-        elif cread.has_tag('NM') and cread.opt('NM') > tread.opt('NM'):
-            k += 1
-        else:
-            filter_file.write(tread)
+        if not tread.is_secondary:
+            cread = cfile.next()
+            while cread.is_secondary:
+                cread = cfile.next()
+            assert tread.query_name == cread.query_name
+            # low-quality
+            if not tread.has_tag('NM'):
+                i += 1
+            elif tread.mapping_quality < args.min_quality:
+                j += 1
+            elif tread.opt('NM') > args.max_edit_distance:
+                j += 1
+            # higher similarity to contamination
+            elif cread.has_tag('NM') and cread.opt('NM') > tread.opt('NM'):
+                k += 1
+            else:
+                filter_file.write(tread)
 
     filter_file.close()
 
