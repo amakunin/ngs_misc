@@ -143,7 +143,7 @@ with pysam.AlignmentFile(fnames['target']) as tfile, \
             elif tread.opt('NM') > args.max_edit_distance:
                 j += 1
             # higher similarity to contamination
-            elif cread.has_tag('NM') and cread.opt('NM') > tread.opt('NM'):
+            elif cread.has_tag('NM') and cread.opt('NM') < tread.opt('NM'):
                 k += 1
             else:
                 filter_file.write(tread)
