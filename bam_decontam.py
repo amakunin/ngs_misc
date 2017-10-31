@@ -130,13 +130,12 @@ with pysam.AlignmentFile(fnames['target']) as tfile, \
     filter_file = pysam.AlignmentFile(fnames['filter'], 'wb', template=tfile)
     (i, j, k) = (0, 0, 0)
     for tread in tfile:
-        i += 1
         cread = cfile.next()
         assert tread.query_name == cread.query_name
         # low-quality
-        if tread.mapping_quality < args.min_quality:
-            j += 1
-        elif not tread.has_tag('NM'):
+        if not tread.has_tag('NM'):
+            i += 1
+        elif tread.mapping_quality < args.min_quality:
             j += 1
         elif tread.opt('NM') > args.max_edit_distance:
             j += 1
@@ -150,13 +149,13 @@ with pysam.AlignmentFile(fnames['target']) as tfile, \
 
 # sort output by coordinate
 bam_sort(fnames['filter'], output)
-sys.stderr.write("%d alignments in the input file %s.\n"
-                 "%d alignments aligned to reference %s.\n"
+sys.stderr.write("\n%d alignments in the input file %s.\n"
+                 "%d alignments failed to map against %s.\n"
                  "%d alignments removed not passing quality filters.\n"
                  "%d alignments removed as belonging to %s.\n"
                  "%d alignments remained after filtering in %s.\n" %
                  (in_reads, args.in_file, i,  args.target_ref,
-                  j, k, args.contam_ref, i-j-k, output))
+                  j, k, args.contam_ref, in_reads-i-j-k, output))
 
 # clean-up
 for f in fnames:
