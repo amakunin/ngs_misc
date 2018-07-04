@@ -19,15 +19,22 @@ def parse_command_line_arguments():
     parser = argparse.ArgumentParser(description=    
                     """
                     Returns substition counts for bam file relative to fasta reference.
-                    Or filters bam file by read length and edit distance.
-                    Requires: pysam package
+                    Input file can be filtered by read length and edit distance.
+                    Requires pysam
                     """
                     )
     parser.add_argument("bam_file", help="input bam file")
-    parser.add_argument("-l", "--max_length", type=int, help="maximum read length filter")
+    parser.add_argument("-o", "--out",
+                        help="output BAM filename")
+    parser.add_argument("-v", "--verbose", action='store_true', default=False,
+                        help="output BAM filename")
+    parser.add_argument("-l", "--max_length", type=int, default=1000,
+                        help="maximum read length filter")
     action1 = parser.add_mutually_exclusive_group(required=False)
-    action1.add_argument("-e", "--max_edit_dist", type=int, help="maximum edit distance to reference for the read")
-    action1.add_argument("-d", "--max_derived", type=int, help="maximum percent of derived positions in read calculated from edit distance")
+    action1.add_argument("-e", "--max_edit_dist", type=int, default=1000,
+                         help="maximum edit distance to reference for the read")
+    action1.add_argument("-d", "--max_divergence", type=int, 
+                         help="maximum percent of derived positions in read calculated from edit distance")
     #parser.add_argument("-r", "--remove_trimming", action='store_true', help="discard all trimming data")
     action2 = parser.add_mutually_exclusive_group(required=True)
     action2.add_argument("-f", "--filter_only", action='store_true', help="only filter bam")
@@ -94,19 +101,20 @@ def main():
     args = parse_command_line_arguments()
      
     # defaults and naming 
-    if not args.max_length:
-        args.max_length = 1000
-    if not args.max_edit_dist and not args.max_derived:
-        args.max_edit_dist = 1000
-    if args.max_edit_dist:
-        outbam = '%slen%dNM%d.bam' % (args.bam_file[:-3], args.max_length, args.max_edit_dist)
-    elif args.max_derived:
-        outbam = '%slen%dder%d.bam' % (args.bam_file[:-3], args.max_length, args.max_derived)
+    if not args.out:
+        if args.max_divergence:
+            outbam = '%slen%dder%d.bam' % (args.bam_file[:-3], args.max_length, args.max_divergence)
+        else:
+            outbam = '%slen%dNM%d.bam' % (args.bam_file[:-3], args.max_length, args.max_edit_dist)
+
+    if not os.path.isfile(args.bam_file + 'bai'):
+        pysam.index(args.bam_file)
 
     with pysam.AlignmentFile(args.bam_file, "rb") as samfile:
-        print '%d reads before filtering' % samfile.count()
+        if args.verbose:
+            print '%d reads before filtering' % samfile.count()
         i = 0
-        with  pysam.AlignmentFile(outbam, "wb", template=samfile) as tmpfile:
+        with pysam.AlignmentFile(outbam, "wb", template=samfile) as tmpfile:
             for read in samfile.fetch():
                 edit_dist = read.get_tag('NM')
                 read_length = read.query_length
@@ -115,43 +123,43 @@ def main():
                         if edit_dist <= args.max_edit_dist:
                             tmpfile.write(read)
                             i += 1
-                    elif args.max_derived:
-                        if 100*edit_dist/read_length < args.max_derived:
+                    elif args.max_divergence:
+                        if 100*edit_dist/read_length < args.max_divergence:
                             tmpfile.write(read)
                             i += 1
-        print '%d reads after filtering' % i
+        if args.verbose:
+            print '%d reads after filtering' % i
 
     # pileup generation
     if not args.filter_only:
-        pileup = pysam.mpileup('-f',args.ref_fasta,outbam)
+        pileup = pysam.mpileup('-f', args.ref_fasta, outbam)
         os.remove(outbam)
-
         # pileup parsing 
-        subst = {'AA':0,'TT':0,'CC':0,'GG':0,
-                 'AC':0,'AT':0,'AG':0,
-                 'CA':0,'CT':0,'CG':0,
-                 'TA':0,'TC':0,'TG':0,
-                 'GA':0,'GC':0,'GT':0,
-                 'ins':0,'del':0,'un':0,'un_ref':0}
-        for line in pileup:
-            toks = line.strip('\n').split('\t')
-            ref = toks[2].upper()
-            alt = parseString(ref, toks[4]).__repr__()
-            for alt_type,count in alt.iteritems():
-                if ref in list('ACTG'):
-                    try:
-                        subst[alt_type] += count
-                    except:
-                        print alt, toks[1]
-                        sys.exit()
-                else:
-                    subst['un_ref'] += count
+        subst = {'AA':0, 'TT':0, 'CC':0, 'GG':0,
+                 'AC':0, 'AT':0, 'AG':0,
+                 'CA':0, 'CT':0, 'CG':0,
+                 'TA':0, 'TC':0, 'TG':0,
+                 'GA':0, 'GC':0, 'GT':0,
+                 'ins':0, 'del':0, 'un':0, 'un_ref':0}
+        for line in pileup.split('\n'):
+            if len(line) > 0:
+                toks = line.strip('\n').split('\t')
+                ref = toks[2].upper()
+                alt = parseString(ref, toks[4]).__repr__()
+                for alt_type, count in alt.iteritems():
+                    if ref in list('ACTG'):
+                        try:
+                            subst[alt_type] += count
+                        except:
+                            print alt, toks[1]
+                            sys.exit()
+                    else:
+                        subst['un_ref'] += count
 
         # output
-        keyorder = "AA\tTT\tCC\tGG\tAC\tAT\tAG\tCA\tCT\tCG\tTA\tTC\tTG\tGA\tGC\tGT\tins\tdel\tun\tno_ref"
-        print  keyorder
-        subst = OrderedDict(sorted(subst.items(), key=lambda i: keyorder.index(i[0])))
-        print  '\t'.join([str(x) for x in subst.values()])
+        # keyorder = "AA\tTT\tCC\tGG\tAC\tAT\tAG\tCA\tCT\tCG\tTA\tTC\tTG\tGA\tGC\tGT\tins\tdel\tun\tno_ref"
+        print '\n'.join(['%s\t%d' % (k,v) for (k,v) in sorted(subst.items())])
+        return subst
             
 
 if __name__ == '__main__':
